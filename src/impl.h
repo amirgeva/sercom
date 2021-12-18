@@ -46,6 +46,7 @@ namespace sercom
 
 		virtual size_t receive_all(uint8_t* data, size_t len) override
 		{
+			if (!is_open()) return 0;
 			size_t total = 0;
 			while (len > 0 && !m_Terminate)
 			{
