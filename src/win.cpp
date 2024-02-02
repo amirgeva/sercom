@@ -6,6 +6,16 @@
 namespace sercom
 {
 
+	std::string format_message()
+	{
+		char buffer[4096];
+		FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM, NULL, GetLastError(), LANG_SYSTEM_DEFAULT,
+					   buffer, 4000, NULL);
+		buffer[4000] = 0;
+		return std::string(buffer);
+	}
+
+
 	class SerialWindows : public SerialImpl
 	{
 		HANDLE	m_Handle;
@@ -45,17 +55,20 @@ namespace sercom
 			ZeroMemory(&m_Params, sizeof(m_Params));
 			m_Params.DCBlength = sizeof(m_Params);
 			if (!GetCommState(m_Handle, &m_Params))
-				throw std::runtime_error("Failed to retrieve port settings");
+				throw std::runtime_error("Failed to retrieve port settings\n"+format_message());
 			m_Params.BaudRate = get_baud_value(baud_rate);
 			m_Params.ByteSize = 8;
-			m_Params.StopBits = 1;
+			m_Params.StopBits = ONESTOPBIT;
+			m_Params.fBinary = TRUE;
 			m_Params.Parity = NOPARITY;
-			m_Params.fOutxCtsFlow = false;
+			m_Params.fOutxCtsFlow = FALSE;
+			m_Params.fDtrControl = DTR_CONTROL_DISABLE;
+			m_Params.fOutxDsrFlow = FALSE;
 			m_Params.fRtsControl = RTS_CONTROL_DISABLE;
 			m_Params.fInX = false;
 			m_Params.fOutX = false;
 			if (!SetCommState(m_Handle, &m_Params))
-				throw std::runtime_error("Failed to set port settings");
+				throw std::runtime_error("Failed to set port settings\n" + format_message());
 			COMMTIMEOUTS timeouts;
 			timeouts.ReadIntervalTimeout = 10;
 			timeouts.WriteTotalTimeoutConstant = 1000;
