@@ -1,5 +1,6 @@
 #ifdef UNIX
 
+#include <iostream>
 #include "impl.h"
 #include <fcntl.h>
 #include <termios.h>
@@ -12,7 +13,7 @@ namespace sercom
 	class SerialLinux : public SerialImpl
 	{
 		int				m_Handle;
-		struct termios	m_Params; 
+		struct termios	m_Params;
 
 		unsigned get_baud_value(unsigned rate)
 		{
@@ -37,28 +38,25 @@ namespace sercom
 		{
 			while (true)
 			{
-				m_Handle = open(port.c_str(), O_RDWR | O_NOCTTY | O_NONBLOCK);
+				m_Handle = open(port.c_str(), O_RDWR);
 				if (m_Handle>=0) break;
 				if (errno == EINTR) continue;
 				throw std::runtime_error(S("Could not open port " << port));
 			}
-			if (tcgetattr(m_Handle, &m_Params) == -1)
+			if (tcgetattr(m_Handle, &m_Params) != 0)
 				throw std::runtime_error(S("Port " << port << " not found"));
-			m_Params.c_cflag |= CLOCAL | CREAD;
-			m_Params.c_lflag &= ~(IEXTEN | ISIG | ECHO | ECHOE | ICANON | ECHOK | ECHONL);
-			m_Params.c_oflag &= ~OPOST;
-			m_Params.c_iflag &= ~(IGNCR | INLCR | ICRNL | IGNBRK | IUCLC);
+			m_Params.c_cflag &= ~(PARENB | CSTOPB | CSIZE | CRTSCTS);
+			m_Params.c_cflag |= CS8 | CREAD | CLOCAL;
+			m_Params.c_lflag &= ~(ICANON | ECHO | ECHOE | ECHONL | ISIG);
+			m_Params.c_iflag &= ~(IXON | IXOFF | IXANY | IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL);
+			m_Params.c_oflag &= ~(OPOST | ONLCR);
 			auto baud=get_baud_value(baud_rate);
-			::cfsetispeed(&m_Params, baud);
-    		::cfsetospeed(&m_Params, baud);
-			m_Params.c_cflag &= ~(CSIZE | CSTOPB | PARENB | PARODD);
-			m_Params.c_cflag |= CS8;
-			m_Params.c_iflag &= ~(INPCK | ISTRIP);
-			m_Params.c_iflag &= ~(IXON | IXOFF);
-			m_Params.c_cflag &= ~CRTSCTS;
-			m_Params.c_cc[VMIN]=0;
-			m_Params.c_cc[VTIME]=0;
-			tcsetattr(m_Handle,TCSANOW, &m_Params);
+			if (::cfsetispeed(&m_Params, baud) != 0)
+				throw std::runtime_error(S("Failed to set input speed"));
+			if (::cfsetospeed(&m_Params, baud) != 0)
+				throw std::runtime_error(S("Failed to set output speed"));
+			if (tcsetattr(m_Handle,TCSANOW, &m_Params) != 0)
+				throw std::runtime_error(S("Failed to set port attributes"));
 		}
 
 		~SerialLinux()
@@ -87,23 +85,10 @@ namespace sercom
 		{
 			return write(m_Handle,data,len);
 		}
-		
+
 		virtual size_t receive(uint8_t* data, size_t max_len) override
 		{
-			fd_set fds;
-			FD_ZERO(&fds);
-			FD_SET(m_Handle, &fds);
-			timeval timeout;
-			timeout.tv_sec=1;
-			timeout.tv_usec=0;
-			int rc=select(1,&fds,0,0,&timeout);
-			if (rc>0)
-			{
-				size_t available = data_available();
-				max_len = std::min(max_len, available);
-				return read(m_Handle,data,max_len);
-			}
-			return 0;
+			return read(m_Handle, data, max_len);
 		}
 	};
 
